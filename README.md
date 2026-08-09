@@ -2,4 +2,7 @@
 
 Computational Life Reactor
 
-Repo Coming Soon
+REPO COMING SOON
+
+Join Discord for feedback and discussion
+https://discord.gg/ry9f98PTUE
