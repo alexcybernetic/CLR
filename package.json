@@ -1,0 +1,48 @@
+{
+  "name": "clr",
+  "private": true,
+  "version": "0.87.1",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "description": "Computational Life Reactor (CLR): emergence of self-replicators from randomness and simple interactions",
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "scripts": {
+    "dev": "vite --config appweb/vite.config.ts",
+    "build": "npm run build:wasm && npm run build:web",
+    "build:web": "vite build --config appweb/vite.config.ts",
+    "preview": "vite preview --config appweb/vite.config.ts",
+    "build:wasm": "node tools/build-wasm.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p engine/tsconfig.worker.json",
+    "test": "npm run typecheck && npm run test:conformance && npm run test:epochs && npm run test:engine && npm run test:ui && npm run test:unit && npm run test:coordinator && npm run test:records && npm run test:webgpu-host",
+    "test:conformance": "node tools/conformance.ts",
+    "test:epochs": "node tools/epoch-conformance.ts",
+    "test:engine": "node tools/engine-regression.ts",
+    "test:ui": "node tools/ui-regression.ts",
+    "test:unit": "vitest run --config appweb/vitest.config.ts",
+    "test:coordinator": "node tools/coordinator-regression.ts",
+    "test:records": "node tools/records-regression.ts",
+    "test:webgpu-host": "node tools/webgpu-host-regression.ts",
+    "test:browser": "npm run build && playwright test --config appweb/playwright.config.ts",
+    "verify": "npm run build:wasm && npm test && npm run build:web"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^27.4.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vitest": "^4.1.10"
+  }
+}

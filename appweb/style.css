@@ -1,0 +1,2397 @@
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   CLR · Computational Life Reactor — matte black anodised case, amber phosphor.
+   The console is one instrument: fluid above its size assumption and uniformly
+   fitted within a bounded range below it.
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --case: #101012;
+  --case-hi: #17171a;
+  --case-lo: #0b0b0d;
+  /* The case finish, and also the page behind it. Declared once and painted on
+     the page rather than on the console, so a console scaled down to fit a
+     smaller window sits on a continuation of its own surface instead of on a
+     black surround — there is no letterbox edge because there is only one
+     gradient. */
+  --case-finish: linear-gradient(178deg, var(--case-hi), var(--case) 46%, var(--case-lo));
+  --edge: #232328;
+  --edge-soft: #1b1b1f;
+  --lip: rgba(89, 141, 169, 0.585);
+
+  /* One solid face across every recessed display. Canvas renderers use the
+     matching DISPLAY_FACE_CSS value from ui/palette.ts. */
+  --screen: #0a0704;
+  --display-edge: #1e1e24;
+  --display-face: var(--screen);
+  --display-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.75),
+    0 1px 0 var(--lip);
+
+  --disabled-opacity: 0.3;
+
+  --amber: #ffb000;
+  --amber-hi: #ffd88a;
+  --amber-mid: #d18a00;
+  --amber-lo: #7a5100;
+  --amber-deep: #3a2600;
+  --red: #ff4426;
+  --green: #57d98a;
+  /* the one cool accent: documentation reads the device, it is not part of the
+     experiment, so it is deliberately not amber */
+  --info: #79b8ff;
+  /* the fixture above the case — decorative, and the only light in the room */
+  --strip: rgba(127, 196, 255, 0.85);
+
+  --ink: #7d7d85;
+  --ink-dim: #838385;
+  --ink-hi: #b9b9c1;
+
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  /* the two lines every deck field is built from: a caption line and a control
+     line, sized to the tallest control on the device so nothing overflows */
+  --field-cap-h: 16px;
+  --field-h: 28px;
+
+  /* type scale — nothing below --fs-micro anywhere */
+  --fs-micro: 12px;
+  --fs-base: 12px;
+  --fs-lead: 14px;
+  --fs-value: 12px;
+  --fs-display: 25px;
+
+  --mono: "Geist Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--case-finish);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-synthesis: none;
+  font-size: var(--fs-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Keep the inert console covered while the module graph loads. The React
+   preflight removes this class immediately after its synchronous mount. */
+body.boot-pending::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #0b0b0d;
+}
+
+/* The stage reports the transformed dimensions to the scrolling viewport.
+   Without it, a CSS transform would leave the console's unscaled layout box in
+   overflow and create scrollbars even when the visible instrument fits. */
+#fitter {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+}
+
+#consoleStage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Added only after script has supplied matching stage and console dimensions.
+   The clip excludes the console's untransformed layout box from #fitter while
+   retaining the complete transformed instrument inside the stage. */
+#consoleStage.fit-ready {
+  overflow: hidden;
+}
+
+/* ── case ────────────────────────────────────────────────────────────────── */
+
+.console {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 100%;
+  /* The size assumption: what the device needs to be itself. Above it the
+     layout is fluid; below it the fitting controller scales the whole console
+     to a readable floor, after which the page scrolls.
+     1520 is measured, not guessed — the deck row and the sampler's control row
+     both need about 1500, and they are what binds. Keep this above whatever
+     they actually require, or the guard in main.ts will widen it at runtime. */
+  min-width: 1520px;
+  min-height: 800px;
+  display: grid;
+  /* header · parameters · what you observe */
+  grid-template-rows: 48px auto minmax(0, 1fr);
+  gap: 9px;
+  padding: 11px;
+  transform-origin: 0 0;
+  /* no background of its own: the page carries the finish, so the case and the
+     space around it are one continuous surface */
+}
+
+.console::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--grain);
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* ── terminal failure ──────────────────────────────────────────────────────
+   The browser's WebAssembly/CSP diagnostic can be several hundred characters.
+   It occupies a grid row rather than floating over the device, and long policy
+   tokens wrap inside the panel instead of escaping across the header. */
+
+.alarm[hidden] {
+  display: none;
+}
+
+body.no-wasm .console {
+  grid-template-rows: auto 48px auto minmax(0, 1fr);
+}
+
+.alarm {
+  position: relative;
+  z-index: 10;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 72%, #52170f);
+  border-left-width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(49, 15, 11, 0.98), rgba(24, 10, 9, 0.98));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 68, 38, 0.08),
+    0 0 18px rgba(255, 68, 38, 0.12);
+  color: #ffb2a4;
+}
+
+.alarm-mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--red);
+  border-radius: 50%;
+  color: #fff0ed;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.alarm-text {
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.alarm-text b,
+#alarmText {
+  display: block;
+}
+
+.alarm-text b {
+  color: #ffd5ce;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+#alarmText {
+  margin-top: 2px;
+  color: var(--ink-hi);
+}
+
+/* ── edge light ──────────────────────────────────────────────────────────────
+   A fixture along the top edge of the case and the wash it throws down the
+   front, as two parts of one object.
+
+   It is blended additively, and that constraint shapes everything else here:
+   the overlay can add light to the case but never take it away. So every dark
+   region is somewhere the light does not reach, not something drawn — and a
+   dark region cannot be softened, only removed by removing the surface it fell
+   on. That is why the fixture sits on the edge rather than standing off it, and
+   spans the full width with faded ends rather than being inset: each of those
+   left case that nothing could light, bounded by a hard edge where the fixture
+   stopped. Additive is still right, though — a translucent fill would darken
+   every readout the wash crosses instead of lighting it.
+
+   Transparent to the pointer, since it covers the deck's controls. */
+
+.edge-light {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 300px;
+  z-index: 5;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+/* the fixture itself */
+.edge-light::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  /* full width, with the ends faded rather than cut — the soft termination an
+     inset was meant to suggest, without leaving unlit case behind it */
+  background: linear-gradient(90deg,
+      rgba(220, 239, 255, 0) 0,
+      var(--strip) 22px,
+      #dcefff 90px,
+      #dcefff calc(100% - 90px),
+      var(--strip) calc(100% - 22px),
+      rgba(220, 239, 255, 0) 100%);
+  /* Centred on the bar, not offset below it: an offset shadow is brightest
+     below its emitter, so the light rose for a few pixels before it began to
+     fall, and a darker line sat between that bump and the top of the wash. The
+     bar is on the edge, so upward glow simply falls off-screen. The blur is
+     also what carries the light sideways into the corners. */
+  box-shadow:
+    0 0 8px rgba(127, 196, 255, 0.6),
+    0 0 26px rgba(127, 196, 255, 0.34);
+}
+
+/* the wash, starting at the fixture's underside — not below it, or the gap
+   between the glow's reach and the wash's first pixel reads as a dark line */
+.edge-light::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg,
+      rgba(127, 196, 255, 0.13) 0,
+      rgba(127, 196, 255, 0.048) 20%,
+      rgba(127, 196, 255, 0.015) 50%,
+      transparent 100%);
+}
+
+/* ── head ────────────────────────────────────────────────────────────────── */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 4px 0 2px;
+  border-bottom: 1px solid var(--edge-soft);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  text-shadow: 0 1px 1px #000;
+}
+
+/* the logo lockup: acronym over the name it stands for */
+.brand-logo {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.02;
+}
+
+/* the one place on the device that carries tracking — three letters set solid
+   read as a word rather than as initials */
+.brand-acronym {
+  font-size: 21px;
+  font-weight: 700;
+  color: rgb(255, 255, 255, 0.9);
+
+}
+
+/* rides on the acronym rather than beside it: small, dim, and raised, so it
+   reads as a mark on the logo instead of a fourth word in the header */
+.brand-version {
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  color: var(--ink-dim);
+  vertical-align: super;
+  margin-left: 4px;
+}
+
+.brand-full {
+  font-style: normal;
+  text-align: center;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* everything the logo does not say, stacked to the same two lines */
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--edge);
+}
+
+.brand-text>p {
+  line-height: 1.1em;
+}
+
+.brand-claim,
+.brand-cite {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.5em;
+}
+
+.brand-claim {
+  color: var(--ink);
+  font-size: var(--fs-base);
+}
+
+.brand-cite {
+  color: var(--ink-dim);
+  font-size: var(--fs-micro);
+}
+
+.brand-cite a {
+  color: var(--info);
+  text-decoration-color: var(--edge);
+  text-underline-offset: 2px;
+}
+
+.brand-cite a:hover {
+  color: var(--info);
+  text-decoration-color: var(--info);
+}
+
+.social-links {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.social-link {
+  --social-icon: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--ink-dim);
+  text-decoration: none;
+}
+
+.social-link::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: var(--social-icon) center / contain no-repeat;
+  mask: var(--social-icon) center / contain no-repeat;
+}
+
+.social-link:hover {
+  border-color: var(--edge);
+  background: rgba(121, 184, 255, 0.06);
+  color: var(--info);
+}
+
+.social-link:focus-visible {
+  outline: 1px solid var(--info);
+  outline-offset: 1px;
+  color: var(--info);
+}
+
+
+.social-link-youtube {
+  --social-icon: url("/youtube.svg");
+}
+
+.social-link-discord {
+  --social-icon: url("/discord.svg");
+}
+
+.social-link-github {
+  --social-icon: url("/github.svg");
+}
+
+.social-link-x {
+  --social-icon: url("/twitter-x.svg");
+}
+
+.social-link-bluesky {
+  --social-icon: url("/bluesky.svg");
+}
+
+.social-links+.btn-help {
+  margin-left: 0;
+}
+
+.seg {
+  font-size: var(--fs-display);
+  line-height: 1;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.seg-live {
+  color: var(--amber);
+  text-shadow: 0 0 9px rgba(255, 176, 0, 0.55);
+}
+
+/* ── machine display ─────────────────────────────────────────────────────────
+   One recessed bezel for everything about the computer rather than the
+   experiment: what it is doing, what is executing it, how fast it is going,
+   and how far it has got. */
+
+/* a display, not a field: it spans both the caption line and the control line,
+   so it is bottom-aligned in the deck row rather than built from them */
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 4px;
+  gap: 5px;
+  padding: 6px 10px 7px;
+  border: 1px solid var(--display-edge);
+  border-radius: 3px;
+  background: var(--display-face);
+  box-shadow: var(--display-shadow);
+}
+
+/* rows are caption-then-value pairs: the name of the quantity comes first,
+   which is how every other label on the device reads */
+.status-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.status-val {
+  color: var(--amber);
+  font-size: var(--fs-micro);
+
+  font-variant-numeric: tabular-nums;
+  /* the counts change every frame; a fixed lane stops the row shuffling */
+  min-width: 40px;
+  text-align: right;
+}
+
+.status-cap {
+  font-size: var(--fs-micro);
+
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* the caption that opens a row keeps its distance from the pair before it */
+.status-cap+.status-val+.status-cap {
+  margin-left: 8px;
+}
+
+/* ── bays ────────────────────────────────────────────────────────────────── */
+
+.bays {
+  display: grid;
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 0.76fr) auto minmax(174px, 202px);
+  gap: 9px;
+  min-height: 700px;
+}
+
+/* ── module ──────────────────────────────────────────────────────────────────
+   Everything on the console with a name and a body is one of these: the two
+   deck zones and the four instrument bays alike. They were built at different
+   times and ended up as two structures with the same shape — which is why the
+   headers had to be reconciled by hand before there was a component.
+
+   The base is that shape. The only real difference between a zone and a bay is
+   how it is framed, so the frame is all the variants carry. */
+
+.module {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* an instrument: draws its own case */
+.module-bay {
+  position: relative;
+  padding: 7px 8px 8px;
+  background: linear-gradient(180deg, #131316, #0d0d0f);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 var(--lip), 0 4px 6px rgba(0, 0, 0, 1);
+}
+
+/* a zone: unframed, because the deck strip it sits in is the frame its zones
+   share. A rule separates it from the next one. */
+.module-zone {
+  padding-right: 14px;
+  border-right: 1px solid var(--edge-soft);
+}
+
+.module-zone:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.module-grow {
+  flex: 1 1 auto;
+}
+
+/* a body laid out across rather than down, its items sharing a bottom edge so
+   that a short control and a tall one still sit on the same line */
+.module-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* …unless the items are modules themselves, which fill the height instead */
+.module-row-stretch {
+  align-items: stretch;
+}
+
+.bay-soup {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.bay-order {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.bay-tele {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.bay-reactor {
+  grid-column: 1 / span 2;
+  grid-row: 4;
+}
+
+/* an instrument, not one of the soup readouts — different frame, cool accent */
+.module-tool {
+  background: linear-gradient(180deg, #101317, #0b0d10);
+}
+
+/* ── module header ───────────────────────────────────────────────────────────
+   Every module opens with exactly this row — the two deck zones and the four
+   bays alike. Before this there were three different header structures, each
+   resolving its own alignment, which is why titles, control rows and help marks
+   all sat at slightly different heights.
+
+   One line, always. The subtitle runs on beside the title rather than beneath
+   it, so a module that has one is not taller than a module that does not, and
+   the row height is set by the same element in every module — the help button
+   every header ends with. No magic number to keep in sync, and nothing to
+   align by hand.
+
+   Order is fixed: [power switch] title, subtitle, tools, help. */
+
+.module-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+
+/* screen-printed onto the case: matte pigment sitting slightly proud of dark
+   plastic, so a hard shadow underneath and no glow. Every module label on the
+   device gets exactly this — no numbering, no letters, no hierarchy. */
+.module-title {
+  margin: 0;
+  flex: none;
+  white-space: nowrap;
+  font-size: var(--fs-lead);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #9ba1a8;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9), 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+/* the first thing allowed to give up room when the module is narrow */
+.module-sub {
+  margin: 0;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+}
+
+/* Shrinkable, but only through the status text: the controls keep their size
+   and the readouts ellipsize, so the width a module needs never depends on
+   what its readouts happen to say. */
+.module-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.module-tools>* {
+  flex: none;
+}
+
+.module-tools .dim {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* the help mark is a fixture of the header, not one of the module's tools, so
+   it sits outside the tool row and always at the far edge */
+.module-head>.btn-hlp {
+  flex: none;
+}
+
+/* a module that can be switched off carries its switch before its name, so the
+   name reads as the switch's label */
+.module-head>.sw {
+  flex: none;
+  margin-right: -3px;
+}
+
+/* in-line words inside a control group, so the row reads as a sentence */
+.lbl {
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.dim {
+  color: var(--ink-dim);
+  font-size: var(--fs-micro);
+
+}
+
+.key-a,
+.key-b,
+.key-c {
+  font-size: var(--fs-micro);
+
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.key-a::before,
+.key-b::before,
+.key-c::before {
+  content: "";
+  width: 10px;
+  height: 2px;
+  background: var(--amber);
+}
+
+.key-a {
+  color: var(--amber-mid);
+}
+
+.key-b {
+  color: var(--ink-dim);
+}
+
+.key-b::before {
+  background: var(--ink-dim);
+}
+
+.key-c {
+  color: #a8a8b0;
+}
+
+.key-c::before {
+  background: repeating-linear-gradient(90deg,
+      #c4c4cc 0 4px,
+      transparent 4px 7px);
+}
+
+/* Shared recessed display shell. Population Order and Sampler place their
+   readout rows and canvas inside one continuous face. */
+.display-shell {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--display-edge);
+  border-radius: 3px;
+  background: var(--display-face);
+  box-shadow: var(--display-shadow);
+}
+
+/* The legend and current measurement share one row inside the same display as
+   the plot. There is no intermediate case-coloured strip between them. */
+
+.order-detail {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 3px 14px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 5px 12px 4px;
+  color: var(--ink-dim);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}
+
+.order-stat {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+}
+
+.order-stat b {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+.order-stat output {
+  display: inline-block;
+  min-width: 6ch;
+  color: var(--ink);
+  font: inherit;
+  text-align: right;
+}
+
+.order-stat.key-a output {
+  color: var(--amber-mid);
+}
+
+.order-stat.key-c output {
+  color: #c4c4cc;
+}
+
+.display-shell>.screen {
+  border-radius: 0;
+  background: var(--screen);
+  box-shadow: none;
+}
+
+/* ── screens ─────────────────────────────────────────────────────────────── */
+
+.screen {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--screen);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 0 0 1px #21201c,
+    inset 0 0 0 2px #0a0a0b,
+    inset 0 0 30px rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+}
+
+.screen canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.screen-rx {
+  flex: 1 1 auto;
+}
+
+/* an instrument readout printed on the phosphor, above the scan lines and
+   vignette; transparent to the pointer so it cannot eat a zoom or a pick */
+.screen-note {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 3;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: rgba(10, 7, 4, 0.74);
+  color: var(--amber-mid);
+  font-size: var(--fs-micro);
+
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom,
+      rgba(0, 0, 0, 0.26) 0 1px,
+      rgba(0, 0, 0, 0) 1px 3px);
+  opacity: 0.75;
+}
+
+body.no-scan .scan {
+  display: none;
+}
+
+.vig {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 100% at 50% 45%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* Both Soup encodings stay visible in a separate strip. Keeping the strip out
+   of the Soup bay means mode changes cannot resize or relayout its canvas. */
+.soup-legends {
+  grid-column: 1 / span 2;
+  grid-row: 3;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+  border: solid 1px var(--edge-soft);
+  opacity: 0.5;
+}
+
+.soup-key-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 4px 12px;
+}
+
+#soupOpsKey {
+  flex: 0 1 auto;
+  min-width: 0;
+  align-self: center;
+}
+
+#soupOpsKey>span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#soupOpsKey>span>i {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  flex: none;
+}
+
+#soupOpsKey>span>em,
+.value-key>em {
+  font-style: normal;
+  color: var(--ink);
+}
+
+.value-key {
+  flex: none;
+  align-items: center;
+  align-self: center;
+  gap: 12px;
+  padding-left: 20px;
+  border-left: 1px solid var(--edge-soft);
+}
+
+.value-items,
+.value-item {
+  display: flex;
+  align-items: center;
+}
+
+.value-items {
+  gap: 14px;
+}
+
+.value-item {
+  gap: 5px;
+}
+
+.value-item i {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  flex: none;
+}
+
+.value-item b {
+  font-weight: 400;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── telemetry ───────────────────────────────────────────────────────────── */
+
+.tele {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* clip rather than spill into the halt block below when the bay is short */
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 0;
+  padding: 1px 2px 3px;
+}
+
+.tele div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+  padding: 1px 0;
+  min-width: 0;
+}
+
+.tele b {
+  font-weight: 400;
+  font-size: var(--fs-micro);
+
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.tele em {
+  font-style: normal;
+  margin-left: auto;
+  color: var(--amber);
+  font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.3);
+  white-space: nowrap;
+}
+
+/* ── reaction state: counts beside replicators ───────────────────────────── */
+
+.reaction-state-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.module-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 5px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.reps {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--edge-soft);
+}
+
+.reps-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+  padding: 1px 12px 3px 0;
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.reps-head .reps-copies {
+  margin-left: auto;
+}
+
+.reps-scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.reps-list {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding-right: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.reps-list::-webkit-scrollbar {
+  display: none;
+}
+
+.reps-scrollbar {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  bottom: 2px;
+  width: 12px;
+  user-select: none;
+  touch-action: none;
+}
+
+.reps-scrollbar[hidden] {
+  display: none;
+}
+
+.reps-scrollbar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 2px;
+  background: rgba(120, 124, 136, 0.16);
+}
+
+.reps-scrollbar>i {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  width: 4px;
+  background: rgba(166, 168, 177, 0.56);
+}
+
+.reps-list>div {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 1px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+/* the sequence itself, one position per byte so rows line up as a block and a
+   shared prefix between two rows is visible by eye */
+.rep-seq {
+  display: flex;
+  flex: none;
+  font-size: var(--fs-base);
+  color: #4e4e56;
+}
+
+.rep-seq i {
+  font-style: normal;
+  width: 11px;
+  text-align: center;
+}
+
+.rep-count {
+  margin-left: auto;
+  color: var(--amber);
+  font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.3);
+}
+
+.rep-share {
+  width: 58px;
+  text-align: right;
+  color: var(--ink-dim);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+/* the verdict from actually running it, not from how often it appears */
+.rep-copies {
+  width: 46px;
+  text-align: right;
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-copies[data-state="high"] {
+  color: var(--green);
+  text-shadow: 0 0 7px rgba(87, 217, 138, 0.35);
+}
+
+.rep-copies[data-state="some"] {
+  color: var(--amber-mid);
+}
+
+.rep-copies[data-state="none"] {
+  color: #5a5a62;
+}
+
+.rep-copies[data-state="untested"] {
+  color: #3d3d44;
+}
+
+.halts {
+  flex: none;
+  padding-top: 5px;
+}
+
+.halt-cap {
+  font-size: var(--fs-micro);
+
+  color: var(--ink-dim);
+}
+
+.halt-bar {
+  display: flex;
+  height: 7px;
+  margin: 4px 0 5px;
+  background: #0a0a0b;
+  border-radius: 1px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px #202024;
+}
+
+.halt-bar i {
+  height: 100%;
+  width: 0;
+  transition: width 140ms linear;
+}
+
+.halt-bar i[data-h="1"] {
+  background: #6b4a12;
+}
+
+.halt-bar i[data-h="2"] {
+  background: var(--amber);
+}
+
+.halt-bar i[data-h="3"] {
+  background: #c25a08;
+}
+
+.halt-bar i[data-h="4"] {
+  background: var(--red);
+}
+
+.halt-key {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px 12px;
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+
+}
+
+.halt-key span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.halt-key i {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  flex: none;
+}
+
+.halt-key span[data-h="1"] i {
+  background: #6b4a12;
+}
+
+.halt-key span[data-h="2"] i {
+  background: var(--amber);
+}
+
+.halt-key span[data-h="3"] i {
+  background: #c25a08;
+}
+
+.halt-key span[data-h="4"] i {
+  background: var(--red);
+}
+
+.halt-key b {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── reactor ─────────────────────────────────────────────────────────────── */
+
+.sampler-display {
+  padding: 6px;
+}
+
+.regs {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  flex: none;
+  padding: 0 2px 4px;
+}
+
+.regs>span {
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.regs b {
+  font-weight: 400;
+  font-size: var(--fs-micro);
+
+  color: var(--ink-dim);
+}
+
+.regs em {
+  font-style: normal;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.3);
+}
+
+.regs .next-byte {
+  display: grid;
+  grid-template-columns: 3ch 1ch auto;
+  column-gap: 1ch;
+  align-items: baseline;
+}
+
+#rNextValue {
+  text-align: right;
+}
+
+#rNextGlyph {
+  text-align: center;
+}
+
+.tickerrow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 0;
+  min-width: 0;
+}
+
+.ticker-cap {
+  font-size: var(--fs-micro);
+
+  color: var(--ink-dim);
+  flex: none;
+}
+
+.ticker {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--amber-mid);
+  font-size: var(--fs-base);
+
+  text-shadow: 0 0 6px rgba(255, 176, 0, 0.25);
+}
+
+/* The deck is gone as a thing of its own. It was a separate framed panel with
+   its own background, padding and shadow — which is why it did not look like a
+   bay — when the only thing that actually distinguished it was that its body
+   holds modules rather than an instrument. It is now a bay whose body is a
+   stretched row of zones. */
+
+/* ── field ───────────────────────────────────────────────────────────────────
+   Every labelled control on the deck is one of these: a caption line above a
+   control line, both of fixed height.
+
+   The heights are what matters. Before, the stack was content-sized and the row
+   bottom-aligned, so the height of the control decided where its caption
+   landed — a 20px fader pushed its caption lower than a 28px segmented control
+   did, and no two captions on the deck agreed. Fixing both lines means every
+   caption sits on one line and every control on another, whatever the control
+   happens to be.
+
+   A field with nothing to say still carries an empty caption, so its control
+   stays on the shared control line. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-cap {
+  display: flex;
+  align-items: center;
+  height: var(--field-cap-h);
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+  white-space: nowrap;
+
+}
+
+/* whatever sits here is centred in it, so a short fader and a tall segmented
+   control still share a centreline */
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--field-h);
+}
+
+/* the transport sits at the right end of the run zone */
+.field-push {
+  margin-left: auto;
+}
+
+/* ── controls ────────────────────────────────────────────────────────────── */
+
+.btn {
+  appearance: none;
+  font: inherit;
+  font-size: var(--fs-base);
+  color: var(--ink-hi);
+  padding: 5px 10px;
+  border: 1px solid #2a2a30;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #1d1d21, #141418);
+  box-shadow: inset 0 1px 0 var(--lip), 0 2px 2px rgba(0, 0, 0, 1);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: filter 70ms linear;
+}
+
+.btn:hover {
+  filter: brightness(1.22);
+}
+
+.btn:active,
+.btn.pressed {
+  transform: translateY(1px);
+  background: linear-gradient(180deg, #101013, #17171b);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.8);
+  color: var(--amber);
+}
+
+.btn:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+
+/* A terminal worker failure leaves the local inspection tools active, but the
+   controls that can only command the failed core must read as unavailable. */
+[data-core-controls] :is(button, input, select):disabled {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+
+.btn-red:active,
+.btn-red:hover {
+  color: var(--red);
+}
+
+.btn.on {
+  color: var(--amber);
+  border-color: #453000;
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.4);
+}
+
+.segctl {
+  display: flex;
+  border: 1px solid #2a2a30;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #0c0c0e;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.segctl button {
+  appearance: none;
+  font: inherit;
+  font-size: var(--fs-base);
+
+  color: var(--ink-dim);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid #1e1e22;
+  padding: 5px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.segctl button:last-child {
+  border-right: 0;
+}
+
+.segctl button:hover {
+  color: var(--ink-hi);
+}
+
+.segctl button:disabled,
+.segctl button:disabled:hover {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+
+}
+
+.segctl button.on {
+  color: var(--amber);
+  background: linear-gradient(180deg, #241a05, #16100200);
+  text-shadow: 0 0 8px rgba(255, 176, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 176, 0, 0.18);
+}
+
+/* toggle switch */
+.sw {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sw-track {
+  position: relative;
+  width: 34px;
+  height: 17px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #08080a, #131316);
+  box-shadow: inset 0 0 0 1px #2a2a30, inset 0 2px 3px rgba(0, 0, 0, 0.8);
+  flex: none;
+}
+
+.sw-nub {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 13px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #3a3a42, #202026);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition: transform 90ms cubic-bezier(0.2, 0.9, 0.3, 1.4), background 90ms linear;
+}
+
+.sw[aria-checked="true"] .sw-nub {
+  transform: translateX(15px);
+  background: linear-gradient(180deg, #ffc743, #b87c00);
+  box-shadow: 0 0 9px rgba(255, 176, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.sw-cap {
+  font-size: var(--fs-base);
+
+  color: var(--ink-dim);
+}
+
+.sw[aria-checked="true"] .sw-cap {
+  color: var(--amber);
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.35);
+}
+
+.sw-sm .sw-track {
+  width: 26px;
+  height: 14px;
+}
+
+.sw-sm .sw-nub {
+  width: 11px;
+  height: 10px;
+}
+
+.sw-sm[aria-checked="true"] .sw-nub {
+  transform: translateX(12px);
+}
+
+.sw-sm .sw-cap {
+  font-size: var(--fs-micro);
+}
+
+/* The master switch.
+ *
+ * These must sit AFTER `.sw[aria-checked="true"] .sw-nub`: both selectors have
+ * identical specificity (one class, one attribute, one class), so the later one
+ * wins. Declared earlier, the base rule's translateX(15px) applied instead and
+ * parked the nub in the middle of the wider track. */
+.sw-lg .sw-track {
+  width: 56px;
+  height: 26px;
+  border-radius: 3px;
+}
+
+.sw-lg .sw-nub {
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 20px;
+  border-radius: 2px;
+}
+
+/* 56 track − 22 nub − 3 left − 3 right = 28 of travel */
+.sw-lg[aria-checked="true"] .sw-nub {
+  transform: translateX(28px);
+}
+
+.sw-lg .sw-cap {
+  font-size: var(--fs-lead);
+
+}
+
+.sel,
+.num {
+  appearance: none;
+  font: inherit;
+  font-size: var(--fs-base);
+  color: var(--amber);
+  background: #0b0b0d;
+  border: 1px solid #2a2a30;
+  border-radius: 3px;
+  padding: 4px 7px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.sel {
+  padding-right: 18px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 10px) 50%, calc(100% - 6px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+.num {
+  width: 86px;
+  cursor: text;
+}
+
+.num::-webkit-outer-spin-button,
+.num::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.sel:focus-visible,
+.num:focus-visible,
+.btn:focus-visible,
+.sw:focus-visible,
+.segctl button:focus-visible {
+  outline: 1px solid var(--amber-mid);
+  outline-offset: 1px;
+}
+
+/* fader */
+.fader {
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 90px;
+  max-width: 260px;
+  height: 18px;
+  background: none;
+  cursor: pointer;
+}
+
+.fader::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #2a2a30, #16161a);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.fader::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #45454e, #22222a);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.fader::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: #22222a;
+}
+
+.fader::-moz-range-thumb {
+  width: 10px;
+  height: 18px;
+  border: 0;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #45454e, #22222a);
+}
+
+.ro {
+  color: var(--amber);
+  font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
+  min-width: 58px;
+  text-align: right;
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.3);
+}
+
+.genes {
+  display: flex;
+  gap: 3px;
+  font-size: var(--fs-base);
+
+}
+
+.genes span {
+  color: var(--amber);
+  background: #0b0b0d;
+  border: 1px solid #24241f;
+  border-radius: 2px;
+  padding: 2px 4px;
+  line-height: 1;
+  text-shadow: 0 0 6px rgba(255, 176, 0, 0.35);
+}
+
+/* ── application start ──────────────────────────────────────────────────────
+   React commits this layer while #application starts inert. The coordinator,
+   record repository, and render loop start only after its explicit action. */
+
+.start-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(127, 196, 255, 0.08), transparent 36%),
+    rgba(6, 6, 8, 0.96);
+}
+
+.start-layer[hidden] {
+  display: none;
+}
+
+.start-layer::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: var(--grain);
+  opacity: 0.035;
+  pointer-events: none;
+}
+
+.start-window {
+  position: relative;
+  isolation: isolate;
+  width: min(640px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  background: linear-gradient(178deg, var(--case-hi), var(--case) 52%, var(--case-lo));
+  box-shadow:
+    inset 0 1px 0 var(--lip),
+    0 26px 80px rgba(0, 0, 0, 0.76);
+}
+
+.start-window::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--grain);
+  opacity: 0.045;
+  pointer-events: none;
+}
+
+.start-light {
+  height: 3px;
+  background: linear-gradient(90deg,
+      transparent,
+      var(--strip) 12%,
+      #dcefff 50%,
+      var(--strip) 88%,
+      transparent);
+  box-shadow: 0 0 16px rgba(127, 196, 255, 0.45);
+}
+
+.start-brand {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 38px 42px 25px;
+  border-bottom: 1px solid var(--edge-soft);
+}
+
+.start-brand-logo .brand-acronym {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 52px;
+  line-height: 0.95;
+  text-shadow: 0 2px 2px #000;
+}
+
+.start-brand-logo .brand-version {
+  margin-left: 7px;
+  font-size: var(--fs-base);
+}
+
+.start-brand-logo .brand-full {
+  margin-top: 8px;
+  color: var(--ink-hi);
+  font-size: var(--fs-base);
+  letter-spacing: 0.08em;
+}
+
+.start-official {
+  margin-top: 4px;
+  padding: 4px 7px;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  color: var(--info);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.start-claim {
+  margin: 0;
+  padding: 24px 42px;
+  color: var(--ink-hi);
+  font-size: var(--fs-lead);
+  line-height: 1.55;
+}
+
+.start-license {
+  margin: 0 42px;
+  padding: 17px 18px;
+  border: 1px solid var(--display-edge);
+  border-radius: 3px;
+  background: var(--display-face);
+  box-shadow: var(--display-shadow);
+  line-height: 1.5;
+}
+
+.start-license p {
+  margin: 0;
+}
+
+.start-license p + p {
+  margin-top: 7px;
+}
+
+.start-license strong {
+  color: var(--amber);
+  font-weight: 600;
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.25);
+}
+
+.start-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+  padding: 17px 42px 23px;
+}
+
+.start-links a {
+  color: var(--info);
+  font-size: var(--fs-micro);
+  text-decoration-color: var(--edge);
+  text-underline-offset: 3px;
+}
+
+.start-links a:hover {
+  text-decoration-color: var(--info);
+}
+
+.start-links a:focus-visible {
+  outline: 1px solid var(--info);
+  outline-offset: 3px;
+}
+
+.start-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px 14px 42px;
+  border-top: 1px solid var(--edge-soft);
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--ink-dim);
+  font-size: var(--fs-micro);
+}
+
+.start-button {
+  padding: 8px 14px;
+  border-color: #453000;
+  color: var(--amber-hi);
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.28);
+}
+
+@media (max-width: 560px) {
+  .start-layer {
+    place-items: start center;
+    padding: 10px;
+  }
+
+  .start-window {
+    margin-block: auto;
+  }
+
+  .start-brand,
+  .start-claim,
+  .start-links {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .start-brand {
+    padding-top: 28px;
+  }
+
+  .start-brand-logo .brand-acronym {
+    font-size: 42px;
+  }
+
+  .start-license {
+    margin-right: 22px;
+    margin-left: 22px;
+  }
+
+  .start-footer {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+
+/* ── help layer ──────────────────────────────────────────────────────────────
+   Every module can explain itself, but only when asked. The notes are an
+   overlay, so switching help on never moves anything. */
+
+/* ── documentation ───────────────────────────────────────────────────────────
+   Every panel carries a `?`; the header carries the model itself. All of them
+   drive one floating window, which lives outside .console because that element
+   is scaled on small viewports, and a transform makes itself the containing
+   block for any fixed-position descendant. */
+
+.btn-help {
+  margin-left: auto;
+  align-self: center;
+}
+
+/* square, and the same size as every other button, so the mark reads as one of
+   the controls rather than as an annotation floating beside them */
+.btn-hlp {
+  flex: none;
+  width: 28px;
+  padding: 5px 0;
+  text-align: center;
+}
+
+.helpwin {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: 430px;
+  height: 560px;
+  min-width: 300px;
+  min-height: 200px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--case-hi), var(--case-lo));
+  box-shadow:
+    inset 0 1px 0 var(--lip),
+    inset 0 0 0 1px var(--edge),
+    0 18px 50px rgba(0, 0, 0, 0.72);
+}
+
+.helpwin-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 0 52%, var(--edge) 53% 58%, transparent 59%),
+    linear-gradient(135deg, transparent 0 70%, var(--ink-dim) 71% 76%, transparent 77%);
+}
+
+.helpwin[hidden] {
+  display: none;
+}
+
+.helpwin-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex: none;
+  padding: 8px 9px 7px 11px;
+  border-bottom: 1px solid var(--edge-soft);
+  cursor: grab;
+  user-select: none;
+}
+
+.helpwin.dragging .helpwin-bar {
+  cursor: grabbing;
+}
+
+/* same screen-printed treatment as every other label on the device */
+.helpwin-cap {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+
+  text-transform: uppercase;
+  color: #9ba1a8;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
+}
+
+.helpwin-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-micro);
+
+  color: var(--amber);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.helpwin-x {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  background: var(--case-lo);
+  color: var(--ink);
+  font: 400 13px/1 var(--mono);
+  cursor: pointer;
+}
+
+.helpwin-x:hover {
+  color: var(--red);
+  border-color: #4a1a10;
+}
+
+.helpwin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  flex: none;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--edge-soft);
+}
+
+.helpwin-nav button {
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink);
+  font: 400 var(--fs-micro) / 1.2 var(--mono);
+
+  cursor: pointer;
+}
+
+.helpwin-nav button:hover {
+  color: var(--ink-hi);
+}
+
+/* the same "you are here" signal as the pressed ? that opened it */
+.helpwin-nav button.on {
+  border-color: #2b4a68;
+  background: #14202b;
+  color: var(--info);
+}
+
+.helpwin-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 11px 13px 16px;
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  color: var(--ink-hi);
+  scrollbar-width: thin;
+  scrollbar-color: #2b2b30 transparent;
+}
+
+.helpwin-body::-webkit-scrollbar {
+  width: 9px;
+}
+
+.helpwin-body::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 5px;
+  background: #2b2b30;
+  background-clip: content-box;
+}
+
+.helpwin-body h4 {
+  margin: 15px 0 5px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+
+  text-transform: uppercase;
+  color: var(--info);
+}
+
+.helpwin-body h4:first-child {
+  margin-top: 0;
+}
+
+.helpwin-body p {
+  margin: 0 0 8px;
+}
+
+.helpwin-body p:last-child {
+  margin-bottom: 0;
+}
+
+.helpwin-body b {
+  font-weight: 400;
+  color: var(--amber);
+}
+
+.helpwin-body em {
+  font-style: italic;
+  color: var(--ink-hi);
+}
+
+/* ── run records and batch controller ───────────────────────────────────── */
+
+.runswin {
+  width: min(1180px, calc(100vw - 24px));
+  height: min(700px, calc(100vh - 40px));
+}
+
+.runswin-body {
+  display: block;
+}
+
+.records-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.batch-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 14px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #131316, #0d0d0f);
+  box-shadow: inset 0 1px 0 var(--lip);
+}
+
+.batch-editor>.module:first-child {
+  flex: 0 0 auto;
+}
+
+.batch-editor :is(.sel, .num, .fader):disabled,
+.batch-editor .fader:disabled+.ro {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+  text-shadow: none;
+}
+
+.batch-editor .module-row {
+  flex-wrap: wrap;
+}
+
+.batch-editor .module-head {
+  min-height: 25px;
+}
+
+.batch-editor .batch-mutation {
+  flex: 1 1 210px;
+}
+
+.batch-editor .batch-mutation .field-row,
+.batch-editor .batch-mutation .fader {
+  width: 100%;
+}
+
+.batch-editor-actions {
+  margin-left: auto;
+}
+
+.batch-error {
+  min-height: 1.55em;
+  margin: 3px 0;
+  color: var(--red);
+}
+
+.batch-queue-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.batch-name {
+  width: 230px;
+}
+
+.batch-state {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  min-height: var(--field-h);
+  color: var(--ink);
+}
+
+.batch-state span:first-child {
+  color: var(--amber);
+}
+
+.batch-queue {
+  max-height: 290px;
+}
+
+.batch-queue tbody tr[data-queue-index] {
+  cursor: pointer;
+}
+
+.batch-queue tbody tr[data-queue-index]:hover td {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.batch-queue tbody tr.selected td {
+  background: rgba(121, 184, 255, 0.08);
+  color: var(--info);
+}
+
+.batch-delete {
+  padding: 3px 7px;
+}
+
+.records-tools {
+  margin-bottom: 10px;
+}
+
+.records-tools span {
+  margin-left: auto;
+  color: var(--ink);
+}
+
+.records-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--display-edge);
+  background: var(--display-face);
+}
+
+.records-table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.records-table th,
+.records-table td {
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--edge-soft);
+  text-align: left;
+  font-weight: 400;
+}
+
+.records-table th {
+  position: sticky;
+  top: 0;
+  background: var(--case-lo);
+  color: var(--ink);
+}
+
+.records-table td {
+  color: var(--ink-hi);
+}
+
+.records-table td:nth-child(6),
+.records-table td:nth-child(7) {
+  color: var(--amber);
+  text-align: right;
+}
+
+.experiment-summary {
+  margin: 0 0 14px;
+}
+
+.experiment-summary h4 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 3px;
+}
+
+.experiment-summary h4 span {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.experiment-summary p {
+  margin: 0 0 6px;
+  color: var(--ink);
+}
+
+.experiment-table td:nth-child(6),
+.experiment-table td:nth-child(7) {
+  color: var(--ink-hi);
+}
+
+.runs-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--info);
+  font: inherit;
+  cursor: pointer;
+}
+
+.runs-link:hover {
+  text-decoration: underline;
+}
+
+/* sampler switched off: its controls and readouts go quiet, and the A/B
+   markers it puts on the soup disappear with it */
+body.sampler-off .bay-reactor .module-tools .btn,
+body.sampler-off .bay-reactor .module-tools .segctl,
+body.sampler-off .bay-reactor .module-tools .lbl,
+body.sampler-off .regs,
+body.sampler-off .tickerrow {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+body.sampler-off .bay-reactor .screen {
+  opacity: 0.25;
+}
+
+/* ── expanded soup ───────────────────────────────────────────────────────────
+   At the paper's soup size the fitted view is far too coarse to resolve a
+   tape, so the panel can take over the whole observation area. */
+body.soup-expanded .bay-order,
+body.soup-expanded .bay-tele,
+body.soup-expanded .bay-reactor {
+  display: none;
+}
+
+body.soup-expanded .bays {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+body.soup-expanded .bay-soup {
+  grid-column: 1 / span 2;
+  grid-row: 1;
+}
+
+body.soup-expanded .soup-legends {
+  grid-row: 2;
+}
+
+#soupScreen {
+  border: 1px solid var(--display-edge);
+  border-radius: 3px;
+  background: var(--screen);
+  box-shadow:
+    var(--display-shadow),
+    inset 0 0 0 1px #21201c,
+    inset 0 0 0 2px #0a0a0b,
+    inset 0 0 30px rgba(0, 0, 0, 0.85);
+  cursor: grab;
+}
+
+#soupScreen.dragging {
+  cursor: grabbing;
+}
+
+/* the same drag still pans; the cursor says a stationary click now selects */
+body.pick-mode #soupScreen {
+  cursor: crosshair;
+}
+
+body.pick-mode #soupScreen.dragging {
+  cursor: grabbing;
+}
+
+/* Tape counts scrolls a ranked table; it does not expose the matrix pan or
+   tape-picking coordinate system. */
+body.soup-counts #soupScreen,
+body.soup-counts.pick-mode #soupScreen {
+  cursor: default;
+}
+
+.btn[aria-pressed='true'] {
+  color: var(--amber);
+  border-color: #453000;
+  text-shadow: 0 0 7px rgba(255, 176, 0, 0.4);
+}
+
+/* Must stay after the amber rule above: identical specificity (0,2,0), so this
+   wins only by source order. Every help affordance lights the same cool blue,
+   which is the one colour on the device that is not the experiment. */
+.btn-hlp[aria-pressed='true'],
+.btn-help[aria-pressed='true'] {
+  color: var(--info);
+  border-color: #2b4a68;
+  background: linear-gradient(180deg, #16232f, #0f1922);
+  text-shadow: 0 0 8px rgba(121, 184, 255, 0.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 12px rgba(90, 160, 255, 0.32);
+}

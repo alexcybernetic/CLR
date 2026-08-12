@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>CLR: Computational Life Reactor</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/style.css" />
+    <meta name="theme-color" content="#0b0b0d" />
+  </head>
+  <body class="boot-pending">
+    <!-- React commits the complete inert application host tree synchronously. -->
+    <div id="appRoot"></div>
+
+    <!-- React-owned preflight; the boot cover remains until both roots commit. -->
+    <div id="startRoot"></div>
+
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

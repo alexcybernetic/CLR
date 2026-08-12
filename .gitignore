@@ -1,0 +1,9 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+.DS_Store
+.env*
+node_modules/
+dist/
+test-results/
+appweb/dist/
+appweb/test-results/
+/tools-internal/
