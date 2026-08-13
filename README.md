@@ -13,7 +13,7 @@ The application runs locally in the browser and does not require a backend.
 Reactor behavior and operator controls are documented in the application's
 **? help** manual.
 
-[![CLR showing an emergent structured population and its population-order measurements](appweb/public/preview.png)]
+![CLR showing an emergent structured population and its population-order measurements](appweb/public/preview.png)
 
 ## Web app link
 
