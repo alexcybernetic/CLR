@@ -71,6 +71,15 @@ test('boots and serializes live changes around a real shard epoch', async ({ pag
   await useOneWorker(page);
   await page.goto('/');
 
+  await expect(page.locator('link[rel="icon"][type="image/svg+xml"]'))
+    .toHaveAttribute('href', /clr-logo\.svg$/);
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+    'content',
+    'https://alexborger.com/clr-computational-life-reactor/preview.jpg',
+  );
+  await expect(page.locator('meta[name="twitter:card"]'))
+    .toHaveAttribute('content', 'summary_large_image');
+
   const startWindow = page.locator('#startWindow');
   await expect(startWindow).toBeVisible();
   await expect(startWindow).toHaveAttribute('role', 'dialog');

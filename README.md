@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="appweb/public/clr-logo.svg" alt="CLR logo" width="120" height="120">
+</p>
+
 # CLR — Computational Life Reactor
 
 CLR is a browser environment for running and inspecting the computational-life
@@ -8,6 +12,12 @@ port and CLR's direct CuBFF port. CuBFF can optionally execute through WebGPU.
 The application runs locally in the browser and does not require a backend.
 Reactor behavior and operator controls are documented in the application's
 **? help** manual.
+
+[![CLR showing an emergent structured population and its population-order measurements](appweb/public/preview.png)]
+
+## Web app link
+
+[https://alexborger.com/clr-computational-life-reactor](https://alexborger.com/clr-computational-life-reactor)
 
 ## Requirements
 

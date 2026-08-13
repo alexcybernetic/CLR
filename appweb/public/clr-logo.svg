@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="148" height="148" viewBox="0 0 148 148" role="img" aria-labelledby="title description">
+  <title id="title">CLR logo</title>
+  <desc id="description">A black chevron over an orange field of horizontal rules.</desc>
+  <defs>
+    <pattern id="rules" width="148" height="6" patternUnits="userSpaceOnUse">
+      <rect y="4" width="148" height="2" fill="#cd6215" />
+    </pattern>
+  </defs>
+  <rect width="148" height="148" fill="#ff791b" />
+  <rect width="148" height="148" fill="url(#rules)" />
+  <path d="M48 44v11l42 19-42 19v11l53-25V69L48 44Z" fill="#090704" />
+</svg>

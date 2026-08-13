@@ -116,6 +116,14 @@ The Vite configuration serves the canonical root `LICENSE` and
 names in the production bundle. The start window therefore links to local
 deployment assets without maintaining duplicate legal text.
 
+The standalone CLR mark is maintained as the vector public asset
+[`clr-logo.svg`](../appweb/public/clr-logo.svg). The document declares it using
+a deployment-relative favicon URL so development and relocatable production
+deployments do not fall back to the website-root favicon. The lossless
+[`preview.png`](../appweb/public/preview.png) is the README screenshot; the
+smaller [`preview.jpg`](../appweb/public/preview.jpg) is the absolute public
+Open Graph and X card image for CLR's canonical deployment.
+
 The main UI components are:
 
 - The React
