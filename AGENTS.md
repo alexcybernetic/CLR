@@ -24,12 +24,14 @@ The following documents contain project documentation:
 
 ## Specs
 
-Specs are Markdown documents containing specifications for each version.
-A near-term to-do item is converted into a spec, resulting in a focused spec file.
-A spec is a short, focused document that defines a problem or feature, its requirements and constraints, the reasoning behind key decisions, and the implementation approach.
-A spec requires explicit review and approval by the user.
-Do not begin implementing a spec until the user explicitly approves it.
-A roadmap item is considered converted into a spec once the user explicitly approves the spec.
+- Specs are Markdown documents containing specifications for each version.
+- A near-term to-do item is converted into a spec, resulting in a focused spec file.
+- A spec is a short, focused document that defines a problem or feature, its requirements and constraints, the reasoning behind key decisions, and the implementation approach.
+- Treat every feature, bug as a spec. Small features, bugs can be grouped into one spec.
+- Keep specs focused, technical and clear.
+- A spec requires explicit review and approval by the user.
+- Do not begin implementing a spec until the user explicitly approves it.
+- A roadmap item is considered converted into a spec once the user explicitly approves the spec.
 
 ## Versioning
 
